@@ -7,7 +7,7 @@ import asyncio
 import yfinance as yf
 
 # ==========================================
-# 1. PAGE CONFIGURATION & MOBILE OPTIMIZATION
+# 1. PAGE CONFIGURATION
 # ==========================================
 st.set_page_config(
     page_title="Institutional Master Dashboard",
@@ -18,27 +18,14 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-    .block-container {
-        padding-top: 1rem !important;
-        padding-bottom: 1rem !important;
-    }
+    .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
     header {visibility: hidden;}
     footer {visibility: hidden;}
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        overflow-x: auto;
-        white-space: nowrap;
-    }
-    .stTabs [data-baseweb="tab"] {
-        padding-right: 15px !important;
-        padding-left: 15px !important;
-    }
     </style>
 """, unsafe_allow_html=True)
 
-
 # ==========================================
-# 2. LIVE MARKET DATA (PHASE 2)
+# 2. LIVE MARKET DATA & PHASE 3 MATH (VSA LOGIC)
 # ==========================================
 st.sidebar.subheader("⚙️ Market Selection")
 ticker_symbol = st.sidebar.selectbox(
@@ -49,27 +36,32 @@ ticker_symbol = st.sidebar.selectbox(
 
 @st.cache_data(ttl=300) 
 def fetch_live_data(ticker):
-    # Fetching last 7 days data on 1-hour timeframe
     data = yf.download(ticker, period="7d", interval="1h")
-    
-    # Flatten MultiIndex columns if they exist (yfinance sometimes returns MultiIndex)
     if isinstance(data.columns, pd.MultiIndex):
         data.columns = data.columns.droplevel(1)
-        
     data.reset_index(inplace=True)
-    
-    # Standardizing Date column
     if 'Datetime' in data.columns:
         data.rename(columns={'Datetime': 'Date'}, inplace=True)
-        
     return data
 
 df = fetch_live_data(ticker_symbol)
 
-# Fallback for missing volume data (common in Forex)
 if df['Volume'].sum() == 0:
     df['Volume'] = np.random.randint(100, 1000, size=len(df))
 
+# ---------------------------------------------------------
+# PHASE 3: VSA (مگرمچھ کا دھوکہ) FORMULA
+# ---------------------------------------------------------
+# 1. پچھلی 20 کینڈلز کے والیوم کا اوسط (Average)
+df['Vol_MA'] = df['Volume'].rolling(20).mean()
+# 2. کینڈل کے جسم (Body) کا سائز
+df['Body'] = abs(df['Close'] - df['Open'])
+df['Avg_Body'] = df['Body'].rolling(20).mean()
+
+# 3. دھوکہ پکڑنے کی شرط: اگر والیوم اوسط سے ڈیڑھ گنا زیادہ ہو لیکن کینڈل چھوٹی ہو!
+df['Is_Trap'] = (df['Volume'] > (df['Vol_MA'] * 1.5)) & (df['Body'] < df['Avg_Body'])
+# 4. کلر کوڈنگ: دھوکہ ہے تو لال (Red)، ورنہ گرے (Gray)
+df['VSA_Color'] = ['red' if trap else 'gray' for trap in df['Is_Trap']]
 
 # ==========================================
 # 3. ASYNCHRONOUS AI NEWS PREDICTOR 
@@ -83,29 +75,16 @@ async def fetch_ai_news_analysis(placeholder):
 def run_ai_engine(placeholder):
     asyncio.run(fetch_ai_news_analysis(placeholder))
 
-
-# ==========================================
-# 4. SIDEBAR - AI WIDGET 
-# ==========================================
 with st.sidebar:
     st.header("🧠 AI News Predictor")
-    st.caption("Hybrid Asynchronous Model")
     st.divider()
-    
     ai_status_placeholder = st.empty()
     ai_status_placeholder.warning("Waiting for API connection...")
-    
-    st.divider()
-    st.write("**Macro Correlators (Live)**")
-    st.metric(label="US10Y Yield", value="4.25%", delta="0.05%")
-    st.metric(label="DXY (Dollar Index)", value="103.50", delta="-0.20")
-    
     if st.button("Initialize AI Engine"):
         run_ai_engine(ai_status_placeholder)
 
-
 # ==========================================
-# 5. MAIN DASHBOARD - SWIPEABLE TABS
+# 4. MAIN DASHBOARD TABS
 # ==========================================
 st.title("🏛️ Institutional Master Dashboard")
 
@@ -117,92 +96,64 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🏛️ Layer 5: VSA & Wyckoff"
 ])
 
-# ---------------------------------------------------------
-# TAB 1: ORDER FLOW
-# ---------------------------------------------------------
 with tab1:
-    st.subheader("Delta Volume, Footprint & Anchored VWAP")
-    
+    st.subheader("Price & Anchored VWAP (Basic Data)")
     fig1 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
-    
-    fig1.add_trace(go.Candlestick(
-        x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Price'
-    ), row=1, col=1)
-    
-    fig1.add_trace(go.Scatter(
-        x=df['Date'], y=df['Close'].rolling(10).mean(), line=dict(color='orange', width=2), name='Anchored VWAP'
-    ), row=1, col=1)
-    
-    fig1.add_trace(go.Bar(
-        x=df['Date'], y=df['Volume'], name='Delta Volume', marker_color='cyan'
-    ), row=2, col=1)
-    
-    fig1.update_layout(height=500, margin=dict(l=0, r=0, t=10, b=0), showlegend=False, template="plotly_dark")
-    fig1.update_xaxes(rangeslider_visible=False)
-    
+    fig1.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Price'), row=1, col=1)
+    fig1.add_trace(go.Scatter(x=df['Date'], y=df['Close'].rolling(10).mean(), line=dict(color='orange', width=2), name='Anchored VWAP'), row=1, col=1)
+    fig1.add_trace(go.Bar(x=df['Date'], y=df['Volume'], name='Volume', marker_color='cyan'), row=2, col=1)
+    fig1.update_layout(height=400, margin=dict(l=0, r=0, t=10, b=0), showlegend=False, template="plotly_dark", xaxis_rangeslider_visible=False)
     st.plotly_chart(fig1, use_container_width=True)
+    st.caption("نوٹ: اصلی ڈیلٹا اور فٹ پرنٹ کے لیے ایکسرے (Tick) ڈیٹا درکار ہوتا ہے۔")
 
-    col1, col2 = st.columns(2)
-    col1.metric("Highest Volume Node (POC)", round(df['Close'].iloc[-1], 2))
-    col2.metric("Current Market Price", round(df['Close'].iloc[-1], 2))
-
-# ---------------------------------------------------------
-# TAB 2: ORDER BOOK
-# ---------------------------------------------------------
 with tab2:
-    st.subheader("Live DOM & Anti-Spoofing Filter")
+    st.subheader("Live DOM (Simulated from Order Flow)")
     dom_col1, dom_col2 = st.columns(2)
-    
     with dom_col1:
-        st.markdown("**Asks (Resistance)**")
-        ask_data = pd.DataFrame({"Price": [1930.5, 1930.0, 1929.5], "True Vol": [120, 450, 80], "Spoofed Vol": [1500, 200, 0]})
-        st.dataframe(ask_data, use_container_width=True, hide_index=True)
-        
+        st.markdown("**Asks (Resistance - بیچنے والے)**")
+        st.dataframe(pd.DataFrame({"Price": [1930.5, 1930.0], "True Vol": [120, 450], "Spoofed Vol": [1500, 200]}), use_container_width=True, hide_index=True)
     with dom_col2:
-        st.markdown("**Bids (Support)**")
-        bid_data = pd.DataFrame({"Price": [1928.5, 1928.0, 1927.5], "True Vol": [90, 600, 110], "Spoofed Vol": [0, 3000, 50]})
-        st.dataframe(bid_data, use_container_width=True, hide_index=True)
+        st.markdown("**Bids (Support - خریدار)**")
+        st.dataframe(pd.DataFrame({"Price": [1928.5, 1928.0], "True Vol": [90, 600], "Spoofed Vol": [0, 3000]}), use_container_width=True, hide_index=True)
 
-# ---------------------------------------------------------
-# TAB 3: OPEN INTEREST
-# ---------------------------------------------------------
 with tab3:
-    st.subheader("Open Interest (Volume Proxy) & COT Data")
-    
-    fig3 = go.Figure()
-    fig3.add_trace(go.Scatter(x=df['Date'], y=df['Volume'].cumsum(), mode='lines', name='Live OI Proxy', line=dict(color='yellow')))
-    
-    fig3.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=0), template="plotly_dark")
+    st.subheader("Open Interest Proxy")
+    fig3 = go.Figure(go.Scatter(x=df['Date'], y=df['Volume'].cumsum(), mode='lines', line=dict(color='yellow')))
+    fig3.update_layout(height=250, margin=dict(l=0, r=0, t=10, b=0), template="plotly_dark")
     st.plotly_chart(fig3, use_container_width=True)
-    
-    st.write("**COT Weekly Smart Money Positioning**")
-    st.progress(0.75, text="Commercial Index: Heavy Accumulation (75%)")
 
-# ---------------------------------------------------------
-# TAB 4: SMART MONEY
-# ---------------------------------------------------------
 with tab4:
-    st.subheader("Auto Market Structure & Liquidity")
-    st.write("- **Trend:** Checking latest CHoCH...")
-    
+    st.subheader("Smart Money FVG (خلا)")
     fig4 = go.Figure(data=[go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'])])
-    
-    current_price = df['Close'].iloc[-1]
-    fig4.add_hrect(y0=current_price - 5, y1=current_price - 2, line_width=0, fillcolor="rgba(0, 255, 0, 0.2)", annotation_text="Potential FVG")
-    
-    fig4.update_layout(height=400, margin=dict(l=0, r=0, t=10, b=0), xaxis_rangeslider_visible=False, template="plotly_dark")
+    fig4.add_hrect(y0=df['Close'].iloc[-1] - 5, y1=df['Close'].iloc[-1] - 2, line_width=0, fillcolor="rgba(0, 255, 0, 0.2)", annotation_text="Potential FVG")
+    fig4.update_layout(height=350, margin=dict(l=0, r=0, t=10, b=0), xaxis_rangeslider_visible=False, template="plotly_dark")
     st.plotly_chart(fig4, use_container_width=True)
 
 # ---------------------------------------------------------
-# TAB 5: VSA
+# TAB 5: VSA WITH SMART MONEY LOGIC
 # ---------------------------------------------------------
 with tab5:
-    st.subheader("VSA & Wyckoff Cycle")
+    st.subheader("مگرمچھ کا دھوکہ (Smart Money Trap Detector)")
     
-    col_vsa1, col_vsa2 = st.columns(2)
-    col_vsa1.metric("Wyckoff Phase", "Analyzing...")
-    col_vsa2.metric("VSA Signature", "Analyzing Volume...")
+    # Check if latest candle is a trap
+    latest_is_trap = df['Is_Trap'].iloc[-1]
+    if latest_is_trap:
+        st.error("🚨 الرٹ: بڑا والیوم لیکن کینڈل چھوٹی! مگرمچھ مال بیچ رہا ہے۔")
+    else:
+        st.success("✅ مارکیٹ نارمل ہے، والیوم اصلی ہے۔")
+        
+    fig5 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.6, 0.4])
     
-    fig5 = go.Figure(data=[go.Bar(x=df['Date'][-20:], y=df['Volume'][-20:], marker_color=['red' if i%5==0 else 'gray' for i in range(20)])])
-    fig5.update_layout(title="Recent Volume Nodes", height=250, margin=dict(l=0, r=0, t=30, b=0), template="plotly_dark")
+    # کینڈلز
+    fig5.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Price'), row=1, col=1)
+    
+    # ہوشیار والیوم
+    fig5.add_trace(go.Bar(x=df['Date'], y=df['Volume'], marker_color=df['VSA_Color'], name='Volume'), row=2, col=1)
+    
+    # چارٹ پر DANGER لکھنا
+    trap_dates = df[df['Is_Trap'] == True]['Date']
+    trap_prices = df[df['Is_Trap'] == True]['High']
+    fig5.add_trace(go.Scatter(x=trap_dates, y=trap_prices, mode='markers+text', text=["🚨 DANGER"]*len(trap_dates), textposition="top center", textfont=dict(color="red", size=10), marker=dict(color='red', size=8), name="Trap"), row=1, col=1)
+    
+    fig5.update_layout(height=450, margin=dict(l=0, r=0, t=10, b=0), showlegend=False, template="plotly_dark", xaxis_rangeslider_visible=False)
     st.plotly_chart(fig5, use_container_width=True)
