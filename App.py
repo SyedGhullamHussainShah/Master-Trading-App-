@@ -130,11 +130,13 @@ async def fetch_real_ai_news(placeholder, ticker):
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # یہاں ہم نے ماڈل کا نام تبدیل کر کے gemini-pro کر دیا ہے
+        model = genai.GenerativeModel('gemini-pro')
+        
         placeholder.info(f"🔄 AI Engine: Connecting to Google AI Studio for {ticker}...")
         prompt = f"Act as an Expert Quant Developer. Give 3 short bullet points real-time macro analysis for {ticker}. 1. Current Event 2. Impact 3. Trade Signal. Keep it simple."
         
-        # Calling the API
         response = await asyncio.to_thread(model.generate_content, prompt)
         
         placeholder.empty()
@@ -146,7 +148,6 @@ async def fetch_real_ai_news(placeholder, ticker):
     except KeyError:
         placeholder.error("⚠️ API Key missing in Secrets!")
     except Exception as e:
-        # اب یہ اصل ایرر سکرین پر دکھائے گا
         placeholder.error(f"⚠️ اصل مسئلہ یہ ہے: {str(e)}")
 
 with st.sidebar:
