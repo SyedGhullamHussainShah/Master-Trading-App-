@@ -124,18 +124,36 @@ with tab5:
     st.plotly_chart(fig5, use_container_width=True, config=tv_config)
 
 # ==========================================
-# 4. SIDEBAR - REAL AI ENGINE
+# 4. SIDEBAR - REAL AI ENGINE (Auto-Model Selector)
 # ==========================================
 async def fetch_real_ai_news(placeholder, ticker):
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
         
-        # یہاں ہم نے ماڈل کا نام تبدیل کر کے gemini-pro کر دیا ہے
-        model = genai.GenerativeModel('gemini-pro')
+        placeholder.info(f"🔄 AI Engine: Checking Google servers for active models...")
         
-        placeholder.info(f"🔄 AI Engine: Connecting to Google AI Studio for {ticker}...")
-        prompt = f"Act as an Expert Quant Developer. Give 3 short bullet points real-time macro analysis for {ticker}. 1. Current Event 2. Impact 3. Trade Signal. Keep it simple."
+        # ایپ خود چیک کرے گی کہ کون سا ماڈل چل رہا ہے
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+                
+        if not available_models:
+            placeholder.error("⚠️ اس وقت گوگل کا کوئی ماڈل دستیاب نہیں ہے۔")
+            return
+            
+        # سب سے بہتر اور تیز ماڈل چننا (اگر لسٹ میں flash ہے تو وہ، ورنہ پہلا)
+        best_model = available_models[0]
+        for m in available_models:
+            if 'flash' in m.lower():
+                best_model = m
+                break
+                
+        model = genai.GenerativeModel(best_model)
+        
+        placeholder.info(f"🔄 AI Engine: Connected to {best_model}. Analyzing {ticker}...")
+        prompt = f"Act as an Expert Quant Developer. Give 3 short bullet points real-time macro analysis for {ticker}. 1. Current Event 2. Impact 3. Trade Signal. Keep it simple and clear."
         
         response = await asyncio.to_thread(model.generate_content, prompt)
         
