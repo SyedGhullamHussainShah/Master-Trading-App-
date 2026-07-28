@@ -55,49 +55,25 @@ df['VSA_Color'] = ['red' if trap else 'gray' for trap in df['Is_Trap']]
 df['Bullish_FVG'] = (df['Low'] > df['High'].shift(2))
 df['Bearish_FVG'] = (df['High'] < df['Low'].shift(2))
 
-# ==========================================
-# 3. TRADINGVIEW STYLE HELPER FUNCTION
-# ==========================================
 def apply_tv_style(fig, height=450):
     fig.update_layout(
-        height=height,
-        margin=dict(l=10, r=10, t=10, b=10),
-        showlegend=False,
-        template="plotly_dark",
-        dragmode='pan',
-        hovermode='x unified', # ٹریڈنگ ویو جیسا کراس ہیئر ڈیٹا
-        xaxis_rangeslider_visible=False
+        height=height, margin=dict(l=10, r=10, t=10, b=10), showlegend=False,
+        template="plotly_dark", dragmode='pan', hovermode='x unified', xaxis_rangeslider_visible=False
     )
-    # کراس ہیئر کی لائنیں (Spike lines)
     fig.update_xaxes(showspikes=True, spikecolor="gray", spikethickness=1, spikedash="dot", spikemode="across", showgrid=True, gridcolor='rgba(128,128,128,0.1)')
     fig.update_yaxes(showspikes=True, spikecolor="gray", spikethickness=1, spikedash="dot", spikemode="across", showgrid=True, gridcolor='rgba(128,128,128,0.1)', fixedrange=False)
     return fig
-    
-# چارٹ کے ٹولز
-tv_config = {
-    'scrollZoom': True, 
-    'displayModeBar': True, 
-    'displaylogo': False,
-    'modeBarButtonsToAdd': ['drawline', 'drawopenpath', 'eraseshape']
-}
+
+tv_config = {'scrollZoom': True, 'displayModeBar': True, 'displaylogo': False, 'modeBarButtonsToAdd': ['drawline', 'drawopenpath', 'eraseshape']}
 
 # ==========================================
-# 4. MAIN DASHBOARD TABS
+# 3. MAIN DASHBOARD TABS
 # ==========================================
 st.title("🏛️ Institutional Master Dashboard")
-
-# پانچ الگ الگ لیئرز
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📊 Layer 1: Order Flow", 
-    "📈 Layer 2: Order Book", 
-    "🌍 Layer 3: Open Interest", 
-    "🧠 Layer 4: Auto Structure", 
-    "🏛️ Layer 5: VSA Alerts"
-])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Layer 1: Order Flow", "📈 Layer 2: Order Book", "🌍 Layer 3: Open Interest", "🧠 Layer 4: Auto Structure", "🏛️ Layer 5: VSA Alerts"])
 
 with tab1:
     st.subheader("Price, Anchored VWAP & Volume")
-    st.caption("💡 زوم کرنے پر کینڈلز غائب ہوں تو چارٹ پر **ڈبل ٹیپ (Double Tap)** کریں تاکہ آٹو فٹ ہو جائے۔ اوپر ڈرائنگ ٹولز بھی موجود ہیں۔")
     fig1 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
     fig1.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close']), row=1, col=1)
     fig1.add_trace(go.Scatter(x=df['Date'], y=df['Close'].rolling(10).mean(), line=dict(color='orange', width=2)), row=1, col=1)
@@ -148,7 +124,7 @@ with tab5:
     st.plotly_chart(fig5, use_container_width=True, config=tv_config)
 
 # ==========================================
-# 5. SIDEBAR - REAL AI ENGINE
+# 4. SIDEBAR - REAL AI ENGINE
 # ==========================================
 async def fetch_real_ai_news(placeholder, ticker):
     try:
@@ -157,16 +133,21 @@ async def fetch_real_ai_news(placeholder, ticker):
         model = genai.GenerativeModel('gemini-1.5-flash')
         placeholder.info(f"🔄 AI Engine: Connecting to Google AI Studio for {ticker}...")
         prompt = f"Act as an Expert Quant Developer. Give 3 short bullet points real-time macro analysis for {ticker}. 1. Current Event 2. Impact 3. Trade Signal. Keep it simple."
+        
+        # Calling the API
         response = await asyncio.to_thread(model.generate_content, prompt)
+        
         placeholder.empty()
         with placeholder.container():
             st.success("⚡ **AI Live Analysis Completed**")
             st.write(response.text)
             st.divider()
+            
     except KeyError:
         placeholder.error("⚠️ API Key missing in Secrets!")
     except Exception as e:
-        placeholder.error("⚠️ Connection error.")
+        # اب یہ اصل ایرر سکرین پر دکھائے گا
+        placeholder.error(f"⚠️ اصل مسئلہ یہ ہے: {str(e)}")
 
 with st.sidebar:
     st.divider()
