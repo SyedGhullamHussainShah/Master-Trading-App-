@@ -124,49 +124,43 @@ with tab5:
     st.plotly_chart(fig5, use_container_width=True, config=tv_config)
 
 # ==========================================
-# 4. SIDEBAR - REAL AI ENGINE (Auto-Model Selector)
+# 4. SIDEBAR - REAL AI ENGINE (Latest Models)
 # ==========================================
 async def fetch_real_ai_news(placeholder, ticker):
+    prompt = f"Act as an Expert Quant Developer. Give 3 short bullet points real-time macro analysis for {ticker}. 1. Current Event 2. Impact 3. Trade Signal. Keep it simple and clear."
+    
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
         
-        placeholder.info(f"🔄 AI Engine: Checking Google servers for active models...")
+        placeholder.info(f"🔄 AI Engine: Connecting to Gemini 3.5 Flash for {ticker}...")
         
-        # ایپ خود چیک کرے گی کہ کون سا ماڈل چل رہا ہے
-        available_models = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available_models.append(m.name)
-                
-        if not available_models:
-            placeholder.error("⚠️ اس وقت گوگل کا کوئی ماڈل دستیاب نہیں ہے۔")
-            return
-            
-        # سب سے بہتر اور تیز ماڈل چننا (اگر لسٹ میں flash ہے تو وہ، ورنہ پہلا)
-        best_model = available_models[0]
-        for m in available_models:
-            if 'flash' in m.lower():
-                best_model = m
-                break
-                
-        model = genai.GenerativeModel(best_model)
-        
-        placeholder.info(f"🔄 AI Engine: Connected to {best_model}. Analyzing {ticker}...")
-        prompt = f"Act as an Expert Quant Developer. Give 3 short bullet points real-time macro analysis for {ticker}. 1. Current Event 2. Impact 3. Trade Signal. Keep it simple and clear."
-        
+        # ہم سیدھا نیا اور ایڈوانس ماڈل 3.5 استعمال کر رہے ہیں
+        model = genai.GenerativeModel('gemini-3.5-flash')
         response = await asyncio.to_thread(model.generate_content, prompt)
         
         placeholder.empty()
         with placeholder.container():
-            st.success("⚡ **AI Live Analysis Completed**")
+            st.success("⚡ **AI Live Analysis Completed (Gemini 3.5)**")
             st.write(response.text)
             st.divider()
             
     except KeyError:
         placeholder.error("⚠️ API Key missing in Secrets!")
     except Exception as e:
-        placeholder.error(f"⚠️ اصل مسئلہ یہ ہے: {str(e)}")
+        # اگر 3.5 میں مسئلہ آیا، تو یہ بیک اپ کے طور پر 3.1 Pro چلائے گا
+        try:
+            placeholder.info(f"🔄 Retrying with Gemini 3.1 Pro...")
+            model = genai.GenerativeModel('gemini-3.1-pro')
+            response = await asyncio.to_thread(model.generate_content, prompt)
+            
+            placeholder.empty()
+            with placeholder.container():
+                st.success("⚡ **AI Live Analysis Completed (Gemini 3.1 Pro)**")
+                st.write(response.text)
+                st.divider()
+        except Exception as e2:
+            placeholder.error(f"⚠️ اصل مسئلہ یہ ہے: {str(e2)}")
 
 with st.sidebar:
     st.divider()
