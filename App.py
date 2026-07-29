@@ -52,17 +52,19 @@ df = fetch_live_data(ticker_symbol, period_val, selected_tf)
 if df['Volume'].sum() == 0:
     df['Volume'] = np.random.randint(100, 1000, size=len(df))
 
+# --- Layer 1 Volume Standard Colors ---
+df['Std_Vol_Color'] = np.where(df['Close'] >= df['Open'], 'rgba(38, 166, 154, 0.8)', 'rgba(239, 83, 80, 0.8)') # TradingView Green/Red
+
 # --- Layer 4 & 5: VSA, TRAPS & WHALE ENTRY ENGINE ---
 df['Vol_MA'] = df['Volume'].rolling(20).mean().fillna(0)
 df['Body'] = abs(df['Close'] - df['Open'])
 df['Avg_Body'] = df['Body'].rolling(20).mean().fillna(0)
 
-# Trap Detection (High Vol + Small Body)
+# Trap Detection & Whale Entry
 df['Is_Trap'] = (df['Volume'] > (df['Vol_MA'] * 1.5)) & (df['Body'] < df['Avg_Body'])
-# WHALE / SMART MONEY ENTRY (Ultra High Vol: > 2.5x average)
 df['Is_Whale'] = df['Volume'] > (df['Vol_MA'] * 2.5)
 
-# والیوم کا رنگ: مگرمچھ کی انٹری پر Gold، ٹریپ پر Red، نارمل پر Cyan
+# والیوم کا رنگ لیئر 5 کے لیے: Gold (Whale), Red (Trap), Cyan (Normal)
 conditions = [df['Is_Whale'], df['Is_Trap']]
 choices = ['gold', 'red']
 df['VSA_Color'] = np.select(conditions, choices, default='cyan')
@@ -98,9 +100,7 @@ tv_config = {'scrollZoom': True, 'displayModeBar': True, 'displaylogo': False, '
 # ==========================================
 st.title("🏛️ Institutional Master Dashboard")
 
-# آخری 3 کینڈلز میں چیک کریں کہ کیا سمارٹ منی انٹر ہوئی ہے؟
 recent_whales = df.tail(3)[df.tail(3)['Is_Whale'] == True]
-
 if not recent_whales.empty:
     last_whale = recent_whales.iloc[-1]
     time_str = last_whale['Date'].strftime('%Y-%m-%d %H:%M')
@@ -128,13 +128,8 @@ with t1:
     fig1 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
     fig1.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close']), row=1, col=1)
     fig1.add_trace(go.Scatter(x=df['Date'], y=df['Close'].rolling(10).mean(), line=dict(color='orange', width=2)), row=1, col=1)
-    
-    # سمارٹ منی (Whale) مارکرز
-    whale_dates = df[df['Is_Whale'] == True]['Date']
-    whale_prices = df[df['Is_Whale'] == True]['High']
-    fig1.add_trace(go.Scatter(x=whale_dates, y=whale_prices, mode='markers+text', text=["⭐ WHALE"]*len(whale_dates), textposition="top center", textfont=dict(color="gold", size=11), marker=dict(color='gold', size=12, symbol='star')), row=1, col=1)
-    
-    fig1.add_trace(go.Bar(x=df['Date'], y=df['Volume'], marker_color=df['VSA_Color']), row=2, col=1)
+    # لیئر 1 میں والیوم عام ٹریڈنگ ویو جیسا (سبز/سرخ) اور صاف (marker_line_width=0)
+    fig1.add_trace(go.Bar(x=df['Date'], y=df['Volume'], marker_color=df['Std_Vol_Color'], marker_line_width=0), row=2, col=1)
     st.plotly_chart(apply_tv_style(fig1, 500), use_container_width=True, config=tv_config)
 
 with t2:
@@ -162,12 +157,15 @@ with t5:
     fig5 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
     fig5.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close']), row=1, col=1)
     
-    # ٹریپ (Trap) اور وہیل (Whale) کے نشانات لیئر 5 پر بھی
+    # لیئر 5 پر ٹریپ اور وہیل کی مکمل نشان دہی
     trap_dates, trap_prices = df[df['Is_Trap'] == True]['Date'], df[df['Is_Trap'] == True]['High']
     fig5.add_trace(go.Scatter(x=trap_dates, y=trap_prices, mode='markers+text', text=["🚨 TRAP"]*len(trap_dates), textposition="top center", textfont=dict(color="red", size=10), marker=dict(color='red', size=8, symbol='x')), row=1, col=1)
+    
+    whale_dates, whale_prices = df[df['Is_Whale'] == True]['Date'], df[df['Is_Whale'] == True]['High']
     fig5.add_trace(go.Scatter(x=whale_dates, y=whale_prices, mode='markers+text', text=["⭐ WHALE"]*len(whale_dates), textposition="top center", textfont=dict(color="gold", size=11), marker=dict(color='gold', size=12, symbol='star')), row=1, col=1)
     
-    fig5.add_trace(go.Bar(x=df['Date'], y=df['Volume'], marker_color=df['VSA_Color']), row=2, col=1)
+    # لیئر 5 میں VSA رنگین والیوم (دھندلاہٹ دور کرنے کے لیے marker_line_width=0)
+    fig5.add_trace(go.Bar(x=df['Date'], y=df['Volume'], marker_color=df['VSA_Color'], marker_line_width=0), row=2, col=1)
     st.plotly_chart(apply_tv_style(fig5, 500), use_container_width=True, config=tv_config)
 
 with t6:
