@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -77,7 +76,7 @@ df['VSA_Color'] = np.select(conditions, choices, default='cyan')
 df['Bullish_FVG'] = (df['Low'] > df['High'].shift(2))
 df['Bearish_FVG'] = (df['High'] < df['Low'].shift(2))
 
-# --- Swing Highs & Lows (Used for Sweeps and BOS) ---
+# --- Swing Highs & Lows ---
 df['Swing_High'] = df['High'].rolling(10).max().shift(1)
 df['Swing_Low'] = df['Low'].rolling(10).min().shift(1)
 
@@ -152,10 +151,10 @@ if not recent_whales.empty:
 recent_sweeps = df.tail(2)[(df.tail(2)['Sweep_High'] == True) | (df.tail(2)['Sweep_Low'] == True)]
 if not recent_sweeps.empty:
     st.toast("💧 LIQUIDITY SWEEP DETECTED!", icon="💧")
-    st.error("💧 **STOP HUNT ALERT:** سمارٹ منی نے ریٹیل ٹریڈرز کا سٹاپ لاس اڑا دیا ہے! ریورسل کی تیاری کریں۔")
+    st.error("💧 **STOP HUNT ALERT:** سمارٹ منی نے ریٹیل ٹریڈرز کا سٹاپ لاس اڑا دیا ہے!")
 
 # TABS
-tabs = st.tabs(["L1: Flow", "L2: DOM", "L3: OI", "L4: FVG", "L5: VSA", "L6: COT", "L7: Wyckoff", "L8: MTF", "L9: Test", "L10: Premium SMC", "L11: Liquidity", "L12: Macro"])
+tabs = st.tabs(["L1: Flow", "L2: DOM", "L3: OI", "L4: FVG", "L5: VSA", "L6: COT", "L7: Wyckoff", "L8: MTF", "L9: Test", "L10: SMC Suite", "L11: Liquidity", "L12: Macro"])
 t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12 = tabs
 
 with t1:
@@ -184,12 +183,22 @@ with t4:
     st.plotly_chart(apply_tv_style(fig4, 500), use_container_width=True, config=tv_config)
 
 with t5:
-    fig5 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
-    fig5.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close']), row=1, col=1)
-    fig5.add_trace(go.Scatter(x=df[df['Is_Trap']]['Date'], y=df[df['Is_Trap']]['High'], mode='markers+text', text=["🚨 TRAP"]*len(df[df['Is_Trap']]), textposition="top center", textfont=dict(color="red", size=10), marker=dict(color='red', size=8, symbol='x')), row=1, col=1)
-    fig5.add_trace(go.Scatter(x=df[df['Is_Whale']]['Date'], y=df[df['Is_Whale']]['High'], mode='markers+text', text=["⭐ WHALE"]*len(df[df['Is_Whale']]), textposition="top center", textfont=dict(color="gold", size=11), marker=dict(color='gold', size=12, symbol='star')), row=1, col=1)
-    fig5.add_trace(go.Bar(x=df['Date'], y=df['Volume'], marker_color=df['VSA_Color'], marker_line_width=0), row=2, col=1)
-    st.plotly_chart(apply_tv_style(fig5, 500), use_container_width=True, config=tv_config)
+    st.subheader("🏛️ VSA Analysis (Sub-Layers)")
+    sub_t5_1, sub_t5_2 = st.tabs(["⭐ Whale Entries (Smart Money)", "🚨 Retail Traps (DANGER)"])
+    
+    with sub_t5_1:
+        fig5_1 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
+        fig5_1.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close']), row=1, col=1)
+        fig5_1.add_trace(go.Scatter(x=df[df['Is_Whale']]['Date'], y=df[df['Is_Whale']]['High'], mode='markers+text', text=["⭐ WHALE"]*len(df[df['Is_Whale']]), textposition="top center", textfont=dict(color="gold", size=11), marker=dict(color='gold', size=12, symbol='star')), row=1, col=1)
+        fig5_1.add_trace(go.Bar(x=df['Date'], y=df['Volume'], marker_color=np.where(df['Is_Whale'], 'gold', 'cyan'), marker_line_width=0), row=2, col=1)
+        st.plotly_chart(apply_tv_style(fig5_1, 500), use_container_width=True, config=tv_config)
+
+    with sub_t5_2:
+        fig5_2 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
+        fig5_2.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close']), row=1, col=1)
+        fig5_2.add_trace(go.Scatter(x=df[df['Is_Trap']]['Date'], y=df[df['Is_Trap']]['High'], mode='markers+text', text=["🚨 TRAP"]*len(df[df['Is_Trap']]), textposition="top center", textfont=dict(color="red", size=10), marker=dict(color='red', size=8, symbol='x')), row=1, col=1)
+        fig5_2.add_trace(go.Bar(x=df['Date'], y=df['Volume'], marker_color=np.where(df['Is_Trap'], 'red', 'cyan'), marker_line_width=0), row=2, col=1)
+        st.plotly_chart(apply_tv_style(fig5_2, 500), use_container_width=True, config=tv_config)
 
 with t6:
     st.subheader("COT Data")
@@ -212,49 +221,54 @@ with t9:
     st.write(f"Upthrust (Sell) Win Rate: **{round((df['Upthrust_Win'].sum() / df['Upthrust'].sum() * 100) if df['Upthrust'].sum()>0 else 0, 1)}%**")
 
 with t10:
-    st.subheader("📊 Premium SMC Suite (Volume Profile, Fib Zones, BOS & Order Blocks)")
+    st.subheader("📊 Premium SMC Suite (Clean Sub-Layers)")
+    st.markdown("چارٹ کو صاف رکھنے کے لیے تمام پریمیم انڈیکیٹرز کو الگ الگ حصوں میں تقسیم کر دیا گیا ہے۔")
     
-    fig10 = make_subplots(rows=1, cols=2, shared_yaxes=True, column_widths=[0.85, 0.15], horizontal_spacing=0)
-    fig10.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close']), row=1, col=1)
+    sub_t10_1, sub_t10_2, sub_t10_3, sub_t10_4 = st.tabs(["📈 Volume Profile", "🧱 Order Blocks", "⚖️ Premium & Discount", "🔄 Market Structure (BOS)"])
     
-    # 1. Volume Profile Lines (POC, VAH, VAL)
-    fig10.add_hline(y=poc_price, line_width=2, line_color="rgba(255, 0, 0, 0.7)", annotation_text="POC", row=1, col=1)
-    fig10.add_hline(y=vah, line_dash="dot", line_color="rgba(0, 255, 255, 0.5)", annotation_text="VAH", row=1, col=1)
-    fig10.add_hline(y=val, line_dash="dot", line_color="rgba(0, 255, 255, 0.5)", annotation_text="VAL", row=1, col=1)
+    # Sub-Layer 1: Volume Profile
+    with sub_t10_1:
+        fig10_1 = make_subplots(rows=1, cols=2, shared_yaxes=True, column_widths=[0.85, 0.15], horizontal_spacing=0)
+        fig10_1.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close']), row=1, col=1)
+        fig10_1.add_hline(y=poc_price, line_width=2, line_color="rgba(255, 0, 0, 0.7)", annotation_text="POC", row=1, col=1)
+        fig10_1.add_hline(y=vah, line_dash="dot", line_color="rgba(0, 255, 255, 0.5)", annotation_text="VAH", row=1, col=1)
+        fig10_1.add_hline(y=val, line_dash="dot", line_color="rgba(0, 255, 255, 0.5)", annotation_text="VAL", row=1, col=1)
+        fig10_1.add_trace(go.Bar(x=vol_profile_orig['Volume'], y=vol_profile_orig['Mid_Price'], orientation='h', marker_color='rgba(100, 150, 255, 0.4)', marker_line_width=0), row=1, col=2)
+        st.plotly_chart(apply_tv_style(fig10_1, 500), use_container_width=True, config=tv_config)
     
-    # 2. Premium / Discount Zones (Fibonacci 50%)
-    fig10.add_hline(y=recent_100_high, line_width=1, line_color="rgba(255, 100, 100, 0.8)", annotation_text="Premium Zone (Sell)", row=1, col=1)
-    fig10.add_hline(y=equilibrium_50, line_dash="dash", line_color="gray", annotation_text="Equilibrium (50%)", row=1, col=1)
-    fig10.add_hline(y=recent_100_low, line_width=1, line_color="rgba(100, 255, 100, 0.8)", annotation_text="Discount Zone (Buy)", row=1, col=1)
-    
-    # 3. BOS / CHoCH (Break of Structure)
-    bull_bos = df[df['Bullish_BOS'] == True]
-    fig10.add_trace(go.Scatter(x=bull_bos['Date'], y=bull_bos['High'], mode='markers+text', text=["🟢 BOS/CHoCH"]*len(bull_bos), textposition="top center", textfont=dict(color="lime", size=10), marker=dict(color='lime', size=6, symbol='triangle-up')), row=1, col=1)
-    
-    bear_bos = df[df['Bearish_BOS'] == True]
-    fig10.add_trace(go.Scatter(x=bear_bos['Date'], y=bear_bos['Low'], mode='markers+text', text=["🔴 BOS/CHoCH"]*len(bear_bos), textposition="bottom center", textfont=dict(color="red", size=10), marker=dict(color='red', size=6, symbol='triangle-down')), row=1, col=1)
-    
-    # 4. Institutional Order Blocks
-    bullish_fvg_rows = df[df['Bullish_FVG']]
-    if not bullish_fvg_rows.empty:
-        idx = bullish_fvg_rows.index[-1]
-        if idx >= 2:
-            ob_high, ob_low = df.loc[idx-2, 'High'], df.loc[idx-2, 'Low']
-            fig10.add_hrect(y0=ob_low, y1=ob_high, fillcolor="rgba(0, 255, 0, 0.15)", line_width=1, line_color="green", annotation_text="Bullish OB", row=1, col=1)
+    # Sub-Layer 2: Order Blocks
+    with sub_t10_2:
+        fig10_2 = go.Figure(data=[go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'])])
+        bullish_fvg_rows = df[df['Bullish_FVG']]
+        if not bullish_fvg_rows.empty:
+            idx = bullish_fvg_rows.index[-1]
+            if idx >= 2:
+                ob_high, ob_low = df.loc[idx-2, 'High'], df.loc[idx-2, 'Low']
+                fig10_2.add_hrect(y0=ob_low, y1=ob_high, fillcolor="rgba(0, 255, 0, 0.15)", line_width=1, line_color="green", annotation_text="Bullish OB")
+        bearish_fvg_rows = df[df['Bearish_FVG']]
+        if not bearish_fvg_rows.empty:
+            idx = bearish_fvg_rows.index[-1]
+            if idx >= 2:
+                ob_high, ob_low = df.loc[idx-2, 'High'], df.loc[idx-2, 'Low']
+                fig10_2.add_hrect(y0=ob_low, y1=ob_high, fillcolor="rgba(255, 0, 0, 0.15)", line_width=1, line_color="red", annotation_text="Bearish OB")
+        st.plotly_chart(apply_tv_style(fig10_2, 500), use_container_width=True, config=tv_config)
 
-    bearish_fvg_rows = df[df['Bearish_FVG']]
-    if not bearish_fvg_rows.empty:
-        idx = bearish_fvg_rows.index[-1]
-        if idx >= 2:
-            ob_high, ob_low = df.loc[idx-2, 'High'], df.loc[idx-2, 'Low']
-            fig10.add_hrect(y0=ob_low, y1=ob_high, fillcolor="rgba(255, 0, 0, 0.15)", line_width=1, line_color="red", annotation_text="Bearish OB", row=1, col=1)
-    
-    # 5. Horizontal Volume Profile
-    fig10.add_trace(go.Bar(x=vol_profile_orig['Volume'], y=vol_profile_orig['Mid_Price'], orientation='h', marker_color='rgba(100, 150, 255, 0.4)', marker_line_width=0), row=1, col=2)
-    
-    fig10.update_layout(height=650, margin=dict(l=10, r=10, t=10, b=10), showlegend=False, template="plotly_dark", dragmode='pan', xaxis_rangeslider_visible=False)
-    fig10.update_yaxes(showgrid=True, gridcolor='rgba(128,128,128,0.1)')
-    st.plotly_chart(fig10, use_container_width=True, config=tv_config)
+    # Sub-Layer 3: Premium / Discount
+    with sub_t10_3:
+        fig10_3 = go.Figure(data=[go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'])])
+        fig10_3.add_hline(y=recent_100_high, line_width=1, line_color="rgba(255, 100, 100, 0.8)", annotation_text="Premium Zone (Sell Area)")
+        fig10_3.add_hline(y=equilibrium_50, line_dash="dash", line_color="gray", annotation_text="Equilibrium (50%)")
+        fig10_3.add_hline(y=recent_100_low, line_width=1, line_color="rgba(100, 255, 100, 0.8)", annotation_text="Discount Zone (Buy Area)")
+        st.plotly_chart(apply_tv_style(fig10_3, 500), use_container_width=True, config=tv_config)
+
+    # Sub-Layer 4: BOS / CHoCH
+    with sub_t10_4:
+        fig10_4 = go.Figure(data=[go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'])])
+        bull_bos = df[df['Bullish_BOS'] == True]
+        fig10_4.add_trace(go.Scatter(x=bull_bos['Date'], y=bull_bos['High'], mode='markers+text', text=["🟢 BOS/CHoCH"]*len(bull_bos), textposition="top center", textfont=dict(color="lime", size=11), marker=dict(color='lime', size=8, symbol='triangle-up')))
+        bear_bos = df[df['Bearish_BOS'] == True]
+        fig10_4.add_trace(go.Scatter(x=bear_bos['Date'], y=bear_bos['Low'], mode='markers+text', text=["🔴 BOS/CHoCH"]*len(bear_bos), textposition="bottom center", textfont=dict(color="red", size=11), marker=dict(color='red', size=8, symbol='triangle-down')))
+        st.plotly_chart(apply_tv_style(fig10_4, 500), use_container_width=True, config=tv_config)
 
 with t11:
     st.subheader("💧 Liquidity Sweeps (Stop Hunting)")
