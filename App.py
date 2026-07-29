@@ -52,19 +52,16 @@ df = fetch_live_data(ticker_symbol, period_val, selected_tf)
 if df['Volume'].sum() == 0:
     df['Volume'] = np.random.randint(100, 1000, size=len(df))
 
-# --- Layer 1 Volume Standard Colors ---
-df['Std_Vol_Color'] = np.where(df['Close'] >= df['Open'], 'rgba(38, 166, 154, 0.8)', 'rgba(239, 83, 80, 0.8)') # TradingView Green/Red
+# --- Standard Volume Color ---
+df['Std_Vol_Color'] = np.where(df['Close'] >= df['Open'], 'rgba(38, 166, 154, 0.8)', 'rgba(239, 83, 80, 0.8)')
 
-# --- Layer 4 & 5: VSA, TRAPS & WHALE ENTRY ENGINE ---
+# --- Layer 4, 5 & 9: VSA, TRAPS, WHALE & BACKTESTING ---
 df['Vol_MA'] = df['Volume'].rolling(20).mean().fillna(0)
 df['Body'] = abs(df['Close'] - df['Open'])
 df['Avg_Body'] = df['Body'].rolling(20).mean().fillna(0)
-
-# Trap Detection & Whale Entry
 df['Is_Trap'] = (df['Volume'] > (df['Vol_MA'] * 1.5)) & (df['Body'] < df['Avg_Body'])
 df['Is_Whale'] = df['Volume'] > (df['Vol_MA'] * 2.5)
 
-# والیوم کا رنگ لیئر 5 کے لیے: Gold (Whale), Red (Trap), Cyan (Normal)
 conditions = [df['Is_Whale'], df['Is_Trap']]
 choices = ['gold', 'red']
 df['VSA_Color'] = np.select(conditions, choices, default='cyan')
@@ -87,6 +84,13 @@ df['Roll_Min'] = df['Low'].rolling(20).min()
 df['Upthrust'] = (df['High'] > df['Roll_Max'].shift(1)) & (df['Close'] < df['Roll_Max'].shift(1))
 df['Spring'] = (df['Low'] < df['Roll_Min'].shift(1)) & (df['Close'] > df['Roll_Min'].shift(1))
 
+# --- Layer 9 Engine: Backtesting (5-Candle Forward Check) ---
+df['Future_Close_5'] = df['Close'].shift(-5)
+# اگر سپرنگ کے 5 کینڈل بعد پرائس اوپر گئی تو یہ Win (کامیابی) ہے
+df['Spring_Win'] = np.where(df['Spring'], df['Future_Close_5'] > df['Close'], False)
+# اگر اپ تھرسٹ کے 5 کینڈل بعد پرائس نیچے گئی تو یہ Win (کامیابی) ہے
+df['Upthrust_Win'] = np.where(df['Upthrust'], df['Future_Close_5'] < df['Close'], False)
+
 # --- TV Style Helper ---
 def apply_tv_style(fig, height=450):
     fig.update_layout(height=height, margin=dict(l=10, r=10, t=10, b=10), showlegend=False, template="plotly_dark", dragmode='pan', hovermode='x unified', xaxis_rangeslider_visible=False)
@@ -106,29 +110,20 @@ if not recent_whales.empty:
     time_str = last_whale['Date'].strftime('%Y-%m-%d %H:%M')
     price_str = round(last_whale['Close'], 4)
     vol_str = int(last_whale['Volume'])
-    
     st.toast("🐋 SMART MONEY ENTERED!", icon="🐋")
-    st.warning(f"""
-    🐋 **WHALE ALERT (بڑے مگرمچھ کی انٹری):** سمارٹ منی مارکیٹ میں بھاری والیوم کے ساتھ داخل ہو چکی ہے!
-    * 📍 **وقت / Date:** {time_str}
-    * 💰 **مارکیٹ قیمت (Price):** {price_str}
-    * 📊 **ریکارڈ والیوم:** {vol_str:,} (نارمل اوسط سے 2.5 گنا زیادہ)
-    """)
+    st.warning(f"🐋 **WHALE ALERT:** سمارٹ منی مارکیٹ میں بھاری والیوم کے ساتھ داخل ہو چکی ہے!\n📍 وقت: {time_str} | 💰 قیمت: {price_str} | 📊 والیوم: {vol_str:,}")
 
 # ==========================================
-# 5. DASHBOARD TABS
+# 5. DASHBOARD TABS (Now 9 Layers)
 # ==========================================
-t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
-    "📊 L1: Order Flow", "📈 L2: Order Book", "🌍 L3: Open Interest", 
-    "🧠 L4: Auto FVG", "🏛️ L5: VSA", "🏦 L6: COT Data", 
-    "🕵️ L7: Wyckoff Cycles", "⏱️ L8: MTF Matrix"
+t1, t2, t3, t4, t5, t6, t7, t8, t9 = st.tabs([
+    "📊 L1", "📈 L2", "🌍 L3", "🧠 L4", "🏛️ L5", "🏦 L6", "🕵️ L7", "⏱️ L8", "🧪 L9: Backtest"
 ])
 
 with t1:
     fig1 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
     fig1.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close']), row=1, col=1)
     fig1.add_trace(go.Scatter(x=df['Date'], y=df['Close'].rolling(10).mean(), line=dict(color='orange', width=2)), row=1, col=1)
-    # لیئر 1 میں والیوم عام ٹریڈنگ ویو جیسا (سبز/سرخ) اور صاف (marker_line_width=0)
     fig1.add_trace(go.Bar(x=df['Date'], y=df['Volume'], marker_color=df['Std_Vol_Color'], marker_line_width=0), row=2, col=1)
     st.plotly_chart(apply_tv_style(fig1, 500), use_container_width=True, config=tv_config)
 
@@ -139,8 +134,8 @@ with t2:
     step = current_price * 0.0005 
     asks = pd.DataFrame({"Price": [round(current_price + (i * step), 4) for i in range(1, 6)][::-1], "Vol": np.random.randint(500, 2500, 5)})
     bids = pd.DataFrame({"Price": [round(current_price - (i * step), 4) for i in range(1, 6)], "Vol": np.random.randint(500, 2500, 5)})
-    with c1: st.markdown("**🔴 Asks (Resistance)**"); st.dataframe(asks, use_container_width=True, hide_index=True)
-    with c2: st.markdown("**🟢 Bids (Support)**"); st.dataframe(bids, use_container_width=True, hide_index=True)
+    with c1: st.markdown("**🔴 Asks**"); st.dataframe(asks, use_container_width=True, hide_index=True)
+    with c2: st.markdown("**🟢 Bids**"); st.dataframe(bids, use_container_width=True, hide_index=True)
 
 with t3:
     fig3 = go.Figure(go.Scatter(x=df['Date'], y=df['Volume'].cumsum(), mode='lines', line=dict(color='yellow', width=2)))
@@ -156,35 +151,28 @@ with t4:
 with t5:
     fig5 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
     fig5.add_trace(go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close']), row=1, col=1)
-    
-    # لیئر 5 پر ٹریپ اور وہیل کی مکمل نشان دہی
     trap_dates, trap_prices = df[df['Is_Trap'] == True]['Date'], df[df['Is_Trap'] == True]['High']
     fig5.add_trace(go.Scatter(x=trap_dates, y=trap_prices, mode='markers+text', text=["🚨 TRAP"]*len(trap_dates), textposition="top center", textfont=dict(color="red", size=10), marker=dict(color='red', size=8, symbol='x')), row=1, col=1)
-    
     whale_dates, whale_prices = df[df['Is_Whale'] == True]['Date'], df[df['Is_Whale'] == True]['High']
     fig5.add_trace(go.Scatter(x=whale_dates, y=whale_prices, mode='markers+text', text=["⭐ WHALE"]*len(whale_dates), textposition="top center", textfont=dict(color="gold", size=11), marker=dict(color='gold', size=12, symbol='star')), row=1, col=1)
-    
-    # لیئر 5 میں VSA رنگین والیوم (دھندلاہٹ دور کرنے کے لیے marker_line_width=0)
     fig5.add_trace(go.Bar(x=df['Date'], y=df['Volume'], marker_color=df['VSA_Color'], marker_line_width=0), row=2, col=1)
     st.plotly_chart(apply_tv_style(fig5, 500), use_container_width=True, config=tv_config)
 
 with t6:
-    st.subheader("COT Data: Commercials vs Speculators")
+    st.subheader("COT Data")
     last = df.iloc[-1]
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Commercials Long", f"{last['Comm_Longs']:,}")
-    col2.metric("Commercials Short", f"{last['Comm_Shorts']:,}")
+    col1.metric("Comm Long", f"{last['Comm_Longs']:,}")
+    col2.metric("Comm Short", f"{last['Comm_Shorts']:,}")
     col3.metric("Non-Comm Long", f"{last['NonComm_Longs']:,}")
     col4.metric("Non-Comm Short", f"{last['NonComm_Shorts']:,}")
-    st.divider()
-    st.markdown("**Net Position Trends (فرق کا گراف)**")
     fig6 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05)
-    fig6.add_trace(go.Scatter(x=df['Date'], y=df['Comm_Net'], fill='tozeroy', mode='lines', name='Commercial Net', line=dict(color='cyan')), row=1, col=1)
-    fig6.add_trace(go.Scatter(x=df['Date'], y=df['NonComm_Net'], fill='tozeroy', mode='lines', name='Non-Commercial Net', line=dict(color='red')), row=2, col=1)
+    fig6.add_trace(go.Scatter(x=df['Date'], y=df['Comm_Net'], fill='tozeroy', mode='lines', name='Comm Net', line=dict(color='cyan')), row=1, col=1)
+    fig6.add_trace(go.Scatter(x=df['Date'], y=df['NonComm_Net'], fill='tozeroy', mode='lines', name='Non-Comm Net', line=dict(color='red')), row=2, col=1)
     st.plotly_chart(apply_tv_style(fig6, 500), use_container_width=True, config=tv_config)
 
 with t7:
-    st.subheader("Wyckoff Market Phases (Spring & Upthrust)")
+    st.subheader("Wyckoff Market Phases")
     fig7 = go.Figure(data=[go.Candlestick(x=df['Date'], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'])])
     spring_dates, spring_prices = df[df['Spring'] == True]['Date'], df[df['Spring'] == True]['Low']
     fig7.add_trace(go.Scatter(x=spring_dates, y=spring_prices, mode='markers+text', text=["🟢 SPRING"]*len(spring_dates), textposition="bottom center", textfont=dict(color="lime", size=11), marker=dict(color='lime', size=10, symbol='triangle-up')))
@@ -193,39 +181,70 @@ with t7:
     st.plotly_chart(apply_tv_style(fig7, 500), use_container_width=True, config=tv_config)
 
 with t8:
-    st.subheader(f"Multi-Timeframe (MTF) Trend Matrix - {selected_tf}")
+    st.subheader(f"Multi-Timeframe Trend")
     last_close, ma_10, ma_50 = df['Close'].iloc[-1], df['Close'].rolling(10).mean().iloc[-1], df['Close'].rolling(50).mean().iloc[-1]
     mtf_data = pd.DataFrame({
         "Timeframe": ["15 Minutes", "1 Hour", "4 Hours", "Daily"],
-        "Trend": ["🟢 Bullish" if last_close > ma_10 else "🔴 Bearish", "🟢 Bullish" if df['Close'].iloc[-1] > df['Close'].iloc[-2] else "🔴 Bearish", "🟢 Bullish" if last_close > ma_50 else "🟡 Ranging", "🔴 Bearish" if ma_10 < ma_50 else "🟢 Bullish"],
-        "Structure Phase": ["Accumulation", "Mark Up", "Distribution", "Mark Down"],
-        "Action Plan": ["Look for Buys", "Hold Longs", "Wait for Breakout", "Hedge Portfolio"]
+        "Trend": ["🟢 Bullish" if last_close > ma_10 else "🔴 Bearish", "🟢 Bullish" if df['Close'].iloc[-1] > df['Close'].iloc[-2] else "🔴 Bearish", "🟢 Bullish" if last_close > ma_50 else "🟡 Ranging", "🔴 Bearish" if ma_10 < ma_50 else "🟢 Bullish"]
     })
     st.dataframe(mtf_data, use_container_width=True, hide_index=True)
 
+with t9:
+    st.subheader("🧪 Backtesting Engine: Strategy Win Rate")
+    st.markdown("یہ لیئر پچھلے ڈیٹا کو ٹیسٹ کر کے بتاتی ہے کہ **Spring (Buy)** اور **Upthrust (Sell)** کے سگنلز کتنے کامیاب رہے۔ (5 کینڈلز کا ٹارگٹ)")
+    
+    total_springs = df['Spring'].sum()
+    spring_wins = df['Spring_Win'].sum()
+    spring_wr = round((spring_wins / total_springs * 100) if total_springs > 0 else 0, 1)
+    
+    total_upthrusts = df['Upthrust'].sum()
+    upthrust_wins = df['Upthrust_Win'].sum()
+    upthrust_wr = round((upthrust_wins / total_upthrusts * 100) if total_upthrusts > 0 else 0, 1)
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        st.success(f"**🟢 SPRING (BUY) STATS:**")
+        st.write(f"کل سگنلز: {total_springs}")
+        st.write(f"کامیاب ٹریڈز: {spring_wins}")
+        st.metric("Win Rate %", f"{spring_wr}%")
+        
+    with c2:
+        st.error(f"**🔴 UPTHRUST (SELL) STATS:**")
+        st.write(f"کل سگنلز: {total_upthrusts}")
+        st.write(f"کامیاب ٹریڈز: {upthrust_wins}")
+        st.metric("Win Rate %", f"{upthrust_wr}%")
+
 # ==========================================
-# 6. SIDEBAR - AI ENGINE
+# 6. SIDEBAR - AI ENGINE (URDU UPDATE)
 # ==========================================
 async def fetch_real_ai_news(placeholder, ticker):
-    prompt = f"Act as an Expert Quant Developer. Give 3 short bullet points real-time macro analysis for {ticker}. Keep it simple."
+    # اے آئی کو مکمل اردو میں جواب دینے کی ہدایت
+    prompt = f"""
+    Act as an Expert Quant Developer. Provide a real-time macro analysis for {ticker} in strictly URDU script. 
+    Give exactly 3 short bullet points:
+    1. حالیہ معاشی صورتحال (Current Event)
+    2. مارکیٹ پر اثر (Impact)
+    3. ٹریڈ کا اشارہ (Trade Signal - Bullish or Bearish)
+    Keep the Urdu clear, professional, and readable.
+    """
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         genai.configure(api_key=api_key)
-        placeholder.info(f"🔄 AI Engine: Connecting for {ticker}...")
+        placeholder.info(f"🔄 AI Engine: اردو میں تجزیہ تیار ہو رہا ہے ({ticker})...")
         model = genai.GenerativeModel('gemini-3.5-flash')
         response = await asyncio.to_thread(model.generate_content, prompt)
         placeholder.empty()
         with placeholder.container():
-            st.success("⚡ **AI Live Analysis Completed**")
+            st.success("⚡ **AI Live Analysis (Urdu)**")
             st.write(response.text)
             st.divider()
     except Exception as e:
-        placeholder.error("⚠️ AI System Maintenance.")
+        placeholder.error(f"⚠️ AI سرور میں کوئی مسئلہ ہے۔ ({str(e)})")
 
 with st.sidebar:
     st.divider()
-    st.header("🧠 AI News Predictor")
+    st.header("🧠 AI News Predictor (Urdu)")
     ai_status_placeholder = st.empty()
-    ai_status_placeholder.warning("System Idle.")
-    if st.button("Initialize Live AI Engine", type="primary"):
+    ai_status_placeholder.warning("سسٹم تیار ہے۔ بٹن دبائیں۔")
+    if st.button("لائیو تجزیہ شروع کریں", type="primary"):
         asyncio.run(fetch_real_ai_news(ai_status_placeholder, ticker_symbol))
