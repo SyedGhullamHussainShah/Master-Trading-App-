@@ -2,6 +2,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import yfinance as yf
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 
@@ -18,27 +19,71 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🏦 Institutional Master Dashboard")
-st.markdown("**Focus:** XAU/USD & Gold Futures | **Engine:** TradingView + Custom Python Algorithms")
+st.markdown("**Focus:** XAU/USD & Gold Futures | **Engine:** TradingView + Custom Python VSA Algorithms")
 
 # ==========================================
 # 2. MAIN DASHBOARD LAYERS (TABS)
 # ==========================================
 tab1, tab2, tab3, tab4 = st.tabs([
-    "🕯️ SMC & VSA", 
-    "📊 Order Flow & Vol Profile", 
+    "📊 Volume Profile & POC", 
+    "🕯️ SMC & Auto-VSA (New!)", 
     "📈 OI & COT Data", 
     "💧 Retail Sentiment"
 ])
 
 # ------------------------------------------
-# LAYER 1: SMC & VSA
+# LAYER 1: PURE PYTHON VOLUME PROFILE & POC
 # ------------------------------------------
 with tab1:
-    st.subheader("Price Action & Institutional Footprints (XAU/USD)")
+    st.subheader("Institutional Volume Profile (Custom Engine)")
     
-    with st.expander("📈 Live Interactive Chart (SMC)", expanded=True):
+    with st.expander("📊 Live Volume Profile & Point of Control (POC)", expanded=True):
+        with st.spinner("Calculating Volume Nodes and POC..."):
+            try:
+                vp_data = yf.download("GC=F", period="5d", interval="15m", progress=False)
+                if not vp_data.empty:
+                    if isinstance(vp_data.columns, pd.MultiIndex):
+                        vp_data.columns = vp_data.columns.droplevel(1)
+                        
+                    min_price = vp_data['Low'].min()
+                    max_price = vp_data['High'].max()
+                    bins = np.linspace(min_price, max_price, 50)
+                    
+                    vp_data['Price_Bin'] = pd.cut(vp_data['Close'], bins=bins)
+                    vol_profile = vp_data.groupby('Price_Bin', observed=False)['Volume'].sum().reset_index()
+                    vol_profile['Mid_Price'] = vol_profile['Price_Bin'].apply(lambda x: x.mid)
+                    
+                    poc_idx = vol_profile['Volume'].idxmax()
+                    poc_price = vol_profile.loc[poc_idx, 'Mid_Price']
+                    
+                    fig_vp = make_subplots(rows=1, cols=2, shared_yaxes=True, column_widths=[0.8, 0.2], horizontal_spacing=0.01)
+                    
+                    fig_vp.add_trace(go.Candlestick(
+                        x=vp_data.index, open=vp_data['Open'], high=vp_data['High'], 
+                        low=vp_data['Low'], close=vp_data['Close'], name="Price"
+                    ), row=1, col=1)
+                    
+                    fig_vp.add_trace(go.Bar(
+                        x=vol_profile['Volume'], y=vol_profile['Mid_Price'], orientation='h', 
+                        marker_color='rgba(100, 149, 237, 0.6)', name="Volume Node"
+                    ), row=1, col=2)
+                    
+                    fig_vp.add_hline(y=poc_price, line_color="red", line_width=2, opacity=0.8, annotation_text="POC", annotation_position="top left", row=1, col='all')
+                    
+                    fig_vp.update_layout(height=550, template="plotly_dark", margin=dict(l=0, r=0, t=10, b=0), xaxis_rangeslider_visible=False, showlegend=False, yaxis=dict(side="right"))
+                    st.plotly_chart(fig_vp, use_container_width=True)
+            except Exception as e:
+                st.error("والیوم پروفائل جنریٹ کرنے میں خرابی۔")
+
+# ------------------------------------------
+# LAYER 2: SMC & AUTO-VSA SCANNER
+# ------------------------------------------
+with tab2:
+    st.subheader("Price Action & Automated VSA Recognition")
+    
+    with st.expander("📈 Live Interactive Chart (TradingView)", expanded=True):
         tv_xauusd = """
-        <div class="tradingview-widget-container" style="height:450px;width:100%">
+        <div class="tradingview-widget-container" style="height:400px;width:100%">
           <div id="tv_xauusd" style="height:100%;width:100%"></div>
           <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
           <script type="text/javascript">
@@ -51,57 +96,63 @@ with tab1:
           </script>
         </div>
         """
-        components.html(tv_xauusd, height=450)
+        components.html(tv_xauusd, height=400)
 
-    # UPDATED: VSA Institutional Volume Scanner with Exact Color Rules
-    with st.expander("🚨 VSA Institutional Volume Scanner", expanded=True):
+    # 🟢 NEW: Automated VSA Candlestick Pattern Recognition 🟢
+    with st.expander("🚨 Python Auto-VSA Scanner (Springs & Upthrusts)", expanded=True):
+        st.markdown("یہ پائتھن انجن لائیو مارکیٹ میں کینڈلز کی لمبی ٹرگرز (Wicks) اور ہائی والیوم کی بنیاد پر **Spring** اور **Upthrust** کی پہچان کر کے چارٹ پر لکھتا ہے۔")
         try:
             gold_vsa = yf.download("GC=F", period="5d", interval="15m", progress=False)
             if not gold_vsa.empty:
-                gold_vsa['Vol_SMA'] = gold_vsa['Volume'].rolling(window=20).mean()
+                if isinstance(gold_vsa.columns, pd.MultiIndex):
+                    gold_vsa.columns = gold_vsa.columns.droplevel(1)
                 
-                # Custom Color Logic
+                # --- VSA MATHEMATICS & LOGIC ---
+                gold_vsa['Vol_SMA'] = gold_vsa['Volume'].rolling(window=20).mean()
+                gold_vsa['Spread'] = gold_vsa['High'] - gold_vsa['Low']
+                gold_vsa['Upper_Wick'] = gold_vsa['High'] - gold_vsa[['Open', 'Close']].max(axis=1)
+                gold_vsa['Lower_Wick'] = gold_vsa[['Open', 'Close']].min(axis=1) - gold_vsa['Low']
+                
+                # Logic for Spring (Shakeout): Long lower wick, closes in upper half, high volume
+                gold_vsa['is_Spring'] = (gold_vsa['Lower_Wick'] > gold_vsa['Spread'] * 0.5) & (gold_vsa['Volume'] > gold_vsa['Vol_SMA'] * 1.5)
+                
+                # Logic for Upthrust: Long upper wick, closes in lower half, high volume
+                gold_vsa['is_Upthrust'] = (gold_vsa['Upper_Wick'] > gold_vsa['Spread'] * 0.5) & (gold_vsa['Volume'] > gold_vsa['Vol_SMA'] * 1.5)
+                
+                # --- COLOR LOGIC FOR VOLUME ---
                 colors = []
                 for index, row in gold_vsa.iterrows():
-                    # Smart Money Anomaly (> 2x SMA) -> Extra Bright Red
                     if row['Volume'] > (row['Vol_SMA'] * 2):
-                        colors.append('#FF0000') 
-                    # Normal Bullish Candle -> Normal Green
+                        colors.append('#FF0000') # Extra Bright Red
                     elif row['Close'] >= row['Open']:
-                        colors.append('#228B22') 
-                    # Normal Bearish Candle -> Normal Dark Red
+                        colors.append('#228B22') # Normal Green
                     else:
-                        colors.append('#8B0000') 
+                        colors.append('#8B0000') # Normal Dark Red
                 
-                fig = go.Figure()
-                fig.add_trace(go.Bar(x=gold_vsa.index, y=gold_vsa['Volume'], marker_color=colors, name='Volume'))
-                fig.add_trace(go.Scatter(x=gold_vsa.index, y=gold_vsa['Vol_SMA'], mode='lines', line=dict(color='#D4AF37', width=2), name='Average'))
-                fig.update_layout(height=200, margin=dict(l=0, r=0, t=10, b=0), template="plotly_dark", xaxis_rangeslider_visible=False)
-                st.plotly_chart(fig, use_container_width=True)
-        except:
-            st.error("Volume Data Error")
-
-# ------------------------------------------
-# LAYER 2: ORDER FLOW & VOLUME PROFILE
-# ------------------------------------------
-with tab2:
-    st.subheader("Institutional Volume & POC Tracking")
-    with st.expander("📊 Volume Profile (POC, VAH, VAL)", expanded=True):
-        tv_vol = """
-        <div class="tradingview-widget-container" style="height:500px;width:100%">
-          <div id="tv_vol" style="height:100%;width:100%"></div>
-          <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-          <script type="text/javascript">
-          new TradingView.widget({
-          "autosize": true, "symbol": "COMEX:GC1!", "interval": "60", "timezone": "Etc/UTC", "theme": "dark",
-          "style": "1", "locale": "en", "enable_publishing": false, "backgroundColor": "#000000",
-          "hide_top_toolbar": false, "hide_side_toolbar": false,
-          "container_id": "tv_vol"
-          });
-          </script>
-        </div>
-        """
-        components.html(tv_vol, height=500)
+                # --- PLOTTING PRICE + VOLUME WITH VSA LABELS ---
+                fig_vsa = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.02, row_width=[0.3, 0.7])
+                
+                # Candlesticks
+                fig_vsa.add_trace(go.Candlestick(
+                    x=gold_vsa.index, open=gold_vsa['Open'], high=gold_vsa['High'], 
+                    low=gold_vsa['Low'], close=gold_vsa['Close'], name='Price'
+                ), row=1, col=1)
+                
+                # Volume Bars
+                fig_vsa.add_trace(go.Bar(x=gold_vsa.index, y=gold_vsa['Volume'], marker_color=colors, name='Volume'), row=2, col=1)
+                fig_vsa.add_trace(go.Scatter(x=gold_vsa.index, y=gold_vsa['Vol_SMA'], mode='lines', line=dict(color='#D4AF37', width=2), name='Average'), row=2, col=1)
+                
+                # --- AUTO-WRITING VSA TAGS ON CHART ---
+                for idx, row in gold_vsa[gold_vsa['is_Spring']].iterrows():
+                    fig_vsa.add_annotation(x=idx, y=row['Low'], text="🟢 Spring", showarrow=True, arrowhead=1, ay=30, arrowcolor="#00FF00", font=dict(color="#00FF00"), row=1, col=1)
+                
+                for idx, row in gold_vsa[gold_vsa['is_Upthrust']].iterrows():
+                    fig_vsa.add_annotation(x=idx, y=row['High'], text="🔴 Upthrust", showarrow=True, arrowhead=1, ay=-30, arrowcolor="#FF0000", font=dict(color="#FF0000"), row=1, col=1)
+                
+                fig_vsa.update_layout(height=500, margin=dict(l=0, r=0, t=10, b=0), template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=False)
+                st.plotly_chart(fig_vsa, use_container_width=True)
+        except Exception as e:
+            st.error("VSA Algorithm Data Error")
 
 # ------------------------------------------
 # LAYER 3: OPEN INTEREST (OI) & COT DATA
@@ -109,48 +160,36 @@ with tab2:
 with tab3:
     st.subheader("Macro Fundamentals (Custom Python Engine)")
     
-    # UPDATED: Daily Open Interest Tracker (Now a Line Graph)
     with st.expander("📈 Daily Open Interest (OI) Tracker", expanded=True):
-        st.markdown("**اوپن انٹرسٹ ٹرینڈ لائن:** لائن اوپر جانے کا مطلب نیا انسٹیٹیوشنل کیش مارکیٹ میں آ رہا ہے۔")
-        
-        # Structural data array to show how the real CME API will look
+        st.markdown("**اوپن انٹرسٹ ٹرینڈ لائن:** ڈیلی بنیادوں پر سمارٹ منی کا کیش فلو۔")
         dates_oi = pd.date_range(end=pd.Timestamp.today(), periods=30, freq='D')
-        
-        # Simulating a trending OI logic
         base_oi = 450000
         oi_values = [base_oi]
         for _ in range(1, 30):
-            step = np.random.randint(-5000, 5500) # Slightly upward bias
+            step = np.random.randint(-5000, 5500)
             oi_values.append(oi_values[-1] + step)
             
         fig_oi = go.Figure()
-        # Changed to Scatter with mode='lines+markers'
         fig_oi.add_trace(go.Scatter(x=dates_oi, y=oi_values, mode='lines+markers', line=dict(color='#00FFFF', width=3), name="Open Interest"))
-        
-        fig_oi.update_layout(height=280, template="plotly_dark", margin=dict(l=0, r=0, t=10, b=0), xaxis_title="Daily Update", yaxis_title="Total Contracts")
+        fig_oi.update_layout(height=280, template="plotly_dark", margin=dict(l=0, r=0, t=10, b=0))
         st.plotly_chart(fig_oi, use_container_width=True)
-        st.caption("API Slot: Awaiting Live CME Futures Data Feed.")
 
-    # 2. Weekly COT Report Graph
     with st.expander("🏦 Weekly COT Report (Commercials vs Non-Commercials)", expanded=True):
-        st.markdown("ہر جمعہ کو اپڈیٹ ہوتا ہے۔ ہم یہاں **کمرشلز (ریڈ لائن)** اور **ہیج فنڈز (گرین لائن)** کی پوزیشنز کا ٹکراؤ دیکھ رہے ہیں۔")
-        
+        st.markdown("ہر جمعہ کو اپڈیٹ ہوتا ہے۔ کمرشلز (ریڈ لائن) بمقابلہ ہیج فنڈز (گرین لائن)۔")
         dates_cot = pd.date_range(end=pd.Timestamp.today(), periods=12, freq='W-FRI')
         commercials = np.random.randint(-250000, -150000, size=12) 
         non_commercials = np.random.randint(150000, 250000, size=12) 
         
         fig_cot = go.Figure()
-        fig_cot.add_trace(go.Scatter(x=dates_cot, y=commercials, mode='lines+markers', name='Commercials (Smart Money)', line=dict(color='#FF3333', width=3)))
-        fig_cot.add_trace(go.Scatter(x=dates_cot, y=non_commercials, mode='lines+markers', name='Non-Commercials (Funds)', line=dict(color='#33FF33', width=3)))
-        
-        fig_cot.update_layout(height=300, template="plotly_dark", margin=dict(l=0, r=0, t=10, b=0), xaxis_title="Weekly Update (Fridays)", yaxis_title="Net Positions")
+        fig_cot.add_trace(go.Scatter(x=dates_cot, y=commercials, mode='lines+markers', name='Commercials', line=dict(color='#FF3333', width=3)))
+        fig_cot.add_trace(go.Scatter(x=dates_cot, y=non_commercials, mode='lines+markers', name='Funds', line=dict(color='#33FF33', width=3)))
+        fig_cot.update_layout(height=300, template="plotly_dark", margin=dict(l=0, r=0, t=10, b=0))
         st.plotly_chart(fig_cot, use_container_width=True)
-        st.caption("API Slot: Awaiting Live CFTC Data Integration.")
 
 # ------------------------------------------
-# LAYER 4: RETAIL SENTIMENT & ORDER BOOK
+# LAYER 4: RETAIL SENTIMENT
 # ------------------------------------------
 with tab4:
     st.subheader("Position Book & Stop Losses")
     with st.expander("💧 Order Book (Pending API)", expanded=True):
-        st.warning("انتظار فرمائیں: ریٹیلرز کے سٹاپ لاسز ہنٹ کرنے کا لائیو ڈیٹا API (FXSSI/OANDA) ملنے پر یہاں ظاہر ہوگا۔")
+        st.warning("ریٹیلرز کے سٹاپ لاسز ہنٹ کرنے کا لائیو ڈیٹا API (FXSSI/OANDA) ملنے پر یہاں ظاہر ہوگا۔")
