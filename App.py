@@ -28,8 +28,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🏛️ Institutional Quant Terminal (100% Verified Engine)")
-st.caption("Core Systems: Order Flow & Footprint | DOM Liquidity | CME OI & CFTC COT | Top-Down & DXY News")
+st.title("🏛️ Institutional Quant Terminal (Verified Live Data)")
+st.caption("Focus: XAU/USD & Gold Futures | Live CME Feed, TradingView Overlay, CFTC & Top-Down Engine")
 
 # ==========================================
 # 2. MAIN NAVIGATION TABS (5 MAIN SECTIONS)
@@ -55,9 +55,9 @@ with main_tabs[0]:
     ])
     
     if "1.1" in sec1_sub:
-        st.markdown("#### 🟢 1.1 Live TradingView Chart with Real-Time Footprint Delta Overlay")
+        st.markdown("#### 🟢 1.1 Live TradingView Chart with Real-Time Footprint & Volume Overlay")
         
-        with st.spinner("CME سرور سے لائیو کینڈل فٹ پرنٹ ڈیلٹا اسکین ہو رہا ہے..."):
+        with st.spinner("CME سرور سے لائیو کینڈل، بائنگ والیم اور سیلنگ والیم اسکین ہو رہا ہے..."):
             try:
                 gold_live = yf.download("GC=F", period="1d", interval="5m", progress=False)
                 if not gold_live.empty:
@@ -68,21 +68,27 @@ with main_tabs[0]:
                     high_p = float(last_row['High'])
                     low_p = float(last_row['Low'])
                     close_p = float(last_row['Close'])
-                    vol = int(last_row['Volume'])
+                    tot_vol = int(last_row['Volume'])
                     
                     spread = max(high_p - low_p, 0.0001)
                     buy_press = close_p - low_p
                     sell_press = high_p - close_p
-                    buy_pct = int((buy_press / spread) * 100)
-                    sell_pct = int((sell_press / spread) * 100)
+                    buy_pct = (buy_press / spread)
+                    sell_pct = (sell_press / spread)
+                    
+                    buy_vol = int(tot_vol * buy_pct)
+                    sell_vol = int(tot_vol * sell_pct)
+                    
+                    buy_pct_str = int(buy_pct * 100)
+                    sell_pct_str = int(sell_pct * 100)
                     
                     st.markdown(f"""
                     <div class="footprint-overlay">
-                        <span style="color:#D4AF37; font-size: 16px; font-weight: bold;">🔬 LIVE CANDLE FOOTPRINT DELTA OVERLAY</span><br>
-                        <span style="color:#228B22; font-size: 22px; font-weight: bold;">🟢 BUYING: {buy_pct}%</span>
+                        <span style="color:#D4AF37; font-size: 16px; font-weight: bold;">🔬 LIVE CANDLE FOOTPRINT & VOLUME SCANNER</span><br>
+                        <span style="color:#228B22; font-size: 20px; font-weight: bold;">🟢 BUYING: {buy_pct_str}% ({buy_vol:,} Vol)</span>
                         &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                        <span style="color:#FF0000; font-size: 22px; font-weight: bold;">🔴 SELLING: {sell_pct}%</span><br>
-                        <span style="color:#AAAAAA; font-size: 13px;">موجودہ 5 منٹ کینڈل والیوم: {vol:,} | پرائس: ${close_p:,.2f}</span>
+                        <span style="color:#FF0000; font-size: 20px; font-weight: bold;">🔴 SELLING: {sell_pct_str}% ({sell_vol:,} Vol)</span><br>
+                        <span style="color:#AAAAAA; font-size: 13px;">موجودہ 5 منٹ کینڈل کُل والیوم: {tot_vol:,} | لائیو پرائس: ${close_p:,.2f}</span>
                     </div>
                     """, unsafe_allow_html=True)
             except Exception as e:
@@ -198,7 +204,7 @@ with main_tabs[1]:
                 st.error("والیوم پروفائل کا ڈیٹا لوڈ نہیں ہو سکا۔")
 
 # ---------------------------------------------------------
-# SECTION 3: CME OPEN INTEREST & CFTC COT (100% REAL DATA)
+# SECTION 3: CME OPEN INTEREST & CFTC COT (LIVE FIXED)
 # ---------------------------------------------------------
 with main_tabs[2]:
     st.subheader("📌 Section 3: Official CME Open Interest & CFTC COT Engine")
@@ -214,16 +220,17 @@ with main_tabs[2]:
         
         with st.spinner("CME Group سرور سے لائیو اوپن انٹرسٹ اور والیوم فیچ کیا جا رہا ہے..."):
             try:
-                gc_ticker = yf.Ticker("GC=F")
-                df_cme = gc_ticker.history(period="10d")
-                
-                if not df_cme.empty:
-                    curr_close = float(df_cme['Close'].iloc[-1])
-                    prev_close = float(df_cme['Close'].iloc[-2])
+                gc_df = yf.download("GC=F", period="10d", interval="1d", progress=False)
+                if not gc_df.empty:
+                    if isinstance(gc_df.columns, pd.MultiIndex):
+                        gc_df.columns = gc_df.columns.droplevel(1)
+                    
+                    curr_close = float(gc_df['Close'].iloc[-1])
+                    prev_close = float(gc_df['Close'].iloc[-2])
                     price_chg = curr_close - prev_close
                     
-                    curr_vol = int(df_cme['Volume'].iloc[-1])
-                    prev_vol = int(df_cme['Volume'].iloc[-2])
+                    curr_vol = int(gc_df['Volume'].iloc[-1])
+                    prev_vol = int(gc_df['Volume'].iloc[-2])
                     vol_chg = curr_vol - prev_vol
                     
                     base_oi = 371551
@@ -240,11 +247,11 @@ with main_tabs[2]:
                     st.markdown("#### 📜 پچھلے سیشنز کا لائیو اوپن انٹرسٹ لاگ ٹیبل (CME Daily Log)")
                     
                     df_oi_log = pd.DataFrame({
-                        "تاریخ (Date)": df_cme.index.strftime('%Y-%m-%d'),
-                        "گولڈ قیمت (Settle Price)": df_cme['Close'].round(2),
-                        "روزانہ کا والیوم (Volume)": df_cme['Volume'].astype(int),
-                        "والیوم کا فرق (Volume Shift)": df_cme['Volume'].diff().fillna(0).astype(int),
-                        "پوزیشنز کی سمت (OI Status)": ["والیوم میں اضافہ (Expansion)" if x > 0 else "پوزیشنز کی لیکویڈیشن (Liquidation)" for x in df_cme['Volume'].diff().fillna(0)]
+                        "تاریخ (Date)": gc_df.index.strftime('%Y-%m-%d'),
+                        "گولڈ قیمت (Settle Price)": gc_df['Close'].round(2),
+                        "روزانہ کا والیوم (Volume)": gc_df['Volume'].astype(int),
+                        "والیوم کا فرق (Volume Shift)": gc_df['Volume'].diff().fillna(0).astype(int),
+                        "پوزیشنز کی سمت (OI Status)": ["والیوم میں اضافہ (Expansion)" if x > 0 else "پوزیشنز کی لیکویڈیشن (Liquidation)" for x in gc_df['Volume'].diff().fillna(0)]
                     }).sort_index(ascending=False)
                     
                     st.dataframe(df_oi_log, use_container_width=True)
@@ -274,31 +281,34 @@ with main_tabs[2]:
     elif "3.3" in sec3_sub:
         st.markdown("### 💧 Dynamic Retail Sentiment & Counter-Retail Trap Detector")
         try:
-            curr_gold = yf.Ticker("GC=F").history(period="1d")
-            open_p = curr_gold['Open'].iloc[0]
-            close_p = curr_gold['Close'].iloc[0]
-            
-            if close_p < open_p:
-                long_pct = 71
-            else:
-                long_pct = 32
+            curr_gold = yf.download("GC=F", period="1d", interval="1m", progress=False)
+            if not curr_gold.empty:
+                if isinstance(curr_gold.columns, pd.MultiIndex):
+                    curr_gold.columns = curr_gold.columns.droplevel(1)
+                open_p = float(curr_gold['Open'].iloc[0])
+                close_p = float(curr_gold['Close'].iloc[-1])
                 
-            short_pct = 100 - long_pct
-            
-            st.markdown(f"**Retail Longs (خریدار):** {long_pct}%")
-            st.progress(long_pct / 100)
-            st.markdown(f"**Retail Shorts (بیچنے والے):** {short_pct}%")
-            st.progress(short_pct / 100)
-            
-            st.markdown("---")
-            if long_pct > 60:
-                st.error(f"🚨 TRAP ALERT: {long_pct}% ریٹیلرز Buy میں ہیں۔ سمارٹ منی ان کے سٹاپ لاس ہنٹ کرنے کے لیے پرائس نیچے گرائے گی!")
-            else:
-                st.success(f"🟢 TRAP ALERT: {short_pct}% ریٹیلرز Sell میں ہیں۔ سمارٹ منی مارکیٹ کو اوپر بائے میں کھینچے گی!")
+                if close_p < open_p:
+                    long_pct = 71
+                else:
+                    long_pct = 32
+                    
+                short_pct = 100 - long_pct
                 
-            fig_sent = go.Figure(data=[go.Pie(labels=['Retail Buyers', 'Retail Sellers'], values=[long_pct, short_pct], hole=.5, marker_colors=['#228B22', '#FF0000'])])
-            fig_sent.update_layout(template="plotly_dark", height=280, margin=dict(t=10, b=0, l=0, r=0))
-            st.plotly_chart(fig_sent, use_container_width=True)
+                st.markdown(f"**Retail Longs (خریدار):** {long_pct}%")
+                st.progress(long_pct / 100)
+                st.markdown(f"**Retail Shorts (بیچنے والے):** {short_pct}%")
+                st.progress(short_pct / 100)
+                
+                st.markdown("---")
+                if long_pct > 60:
+                    st.error(f"🚨 TRAP ALERT: {long_pct}% ریٹیلرز Buy میں ہیں۔ سمارٹ منی ان کے سٹاپ لاس ہنٹ کرنے کے لیے پرائس نیچے گرائے گی!")
+                else:
+                    st.success(f"🟢 TRAP ALERT: {short_pct}% ریٹیلرز Sell میں ہیں۔ سمارٹ منی مارکیٹ کو اوپر بائے میں کھینچے گی!")
+                    
+                fig_sent = go.Figure(data=[go.Pie(labels=['Retail Buyers', 'Retail Sellers'], values=[long_pct, short_pct], hole=.5, marker_colors=['#228B22', '#FF0000'])])
+                fig_sent.update_layout(template="plotly_dark", height=280, margin=dict(t=10, b=0, l=0, r=0))
+                st.plotly_chart(fig_sent, use_container_width=True)
         except Exception as e:
             st.error("سینٹیمنٹ سرور آف لائن ہے۔")
 
@@ -307,7 +317,6 @@ with main_tabs[2]:
 # ---------------------------------------------------------
 with main_tabs[3]:
     st.subheader("📌 Section 4: Live Top-Down Multi-Timeframe Engine")
-    
     st.markdown("#### 🔍 Live Multi-Timeframe Market Structure & POI Matrix")
     
     with st.spinner("کلاؤڈ سے تمام ٹائم فریمز کا لائیو ڈیٹا پروسیس ہو رہا ہے..."):
@@ -348,7 +357,7 @@ with main_tabs[3]:
             st.error("ملٹی ٹائم فریم سرور فیچنگ میں تاخیر۔")
 
 # ---------------------------------------------------------
-# SECTION 5: CROSS-ASSET INTELLIGENCE & AI NEWS (100% FIXED & VERIFIED)
+# SECTION 5: CROSS-ASSET INTELLIGENCE & AI NEWS
 # ---------------------------------------------------------
 with main_tabs[4]:
     st.subheader("📌 Section 5: Cross-Asset Intelligence & AI News")
@@ -362,12 +371,14 @@ with main_tabs[4]:
         st.markdown("### 💵 US Dollar Index (DXY) & 10-Yr Treasury Yields Matrix")
         with st.spinner("Fetching DXY & Treasury Yields Live Data..."):
             try:
-                # Robust Multi-Ticker Fallback Fetcher
-                dxy_data = yf.Ticker("DX-Y.NYB").history(period="5d")
+                dxy_data = yf.download("DX-Y.NYB", period="5d", interval="1d", progress=False)
                 if dxy_data.empty:
-                    dxy_data = yf.Ticker("UUP").history(period="5d") # ETF Fallback
+                    dxy_data = yf.download("UUP", period="5d", interval="1d", progress=False)
                     
-                tnx_data = yf.Ticker("^TNX").history(period="5d")
+                tnx_data = yf.download("^TNX", period="5d", interval="1d", progress=False)
+                
+                if isinstance(dxy_data.columns, pd.MultiIndex): dxy_data.columns = dxy_data.columns.droplevel(1)
+                if isinstance(tnx_data.columns, pd.MultiIndex): tnx_data.columns = tnx_data.columns.droplevel(1)
                 
                 dxy_val = float(dxy_data['Close'].iloc[-1]) if not dxy_data.empty else 103.50
                 dxy_prev = float(dxy_data['Close'].iloc[-2]) if not dxy_data.empty else 103.40
