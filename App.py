@@ -126,7 +126,7 @@ with main_tabs[0]:
 
     elif "1.2" in sec1_sub:
         st.markdown("#### 🔬 1.2 Candlestick Zoomable Footprint Engine (B:XX% / S:XX% On-Candles)")
-        st.caption("💡 اشارہ: آپ اس چارٹ کو ماؤس/اسکرین سے زوم اِن (Zoom In)، زوم آؤٹ (Zoom Out) اور پین (Pan) کر سکتے ہیں۔")
+        st.caption("💡 TradingView Style Zoom: ماؤس ویل یا دو انگلیوں سے کینڈلز کو جتنا مرضی زوم کریں، کینڈلز اور پرسنٹیج بالکل اپنی جگہ پر رہیں گی۔")
         with st.spinner("کینڈلز کے اندر لائیو بائنگ/سیلنگ فیصد ڈرا ہو رہا ہے..."):
             fp_df = fetch_spot_gold(period="2d", interval="15m")
             if not fp_df.empty:
@@ -138,36 +138,51 @@ with main_tabs[0]:
                     fp_df['Sell_Pct'] = (fp_df['Sell_P'] / fp_df['Spread']) * 100
                     fp_df['Mid_Price'] = (fp_df['High'] + fp_df['Low']) / 2
                     
+                    # Formatted Category X-Axis to prevent vanishing during zoom
+                    time_strings = fp_df.index.strftime('%d-%b %H:%M')
+                    
                     fp_df['Footprint_Tag'] = fp_df.apply(
                         lambda r: f"<b>B:{int(r['Buy_Pct'])}%<br>S:{int(r['Sell_Pct'])}%</b>", axis=1
                     )
                     
                     fig_inner = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_width=[0.25, 0.75])
                     
+                    # Candlestick using Category Axis
                     fig_inner.add_trace(go.Candlestick(
-                        x=fp_df.index, open=fp_df['Open'], high=fp_df['High'], low=fp_df['Low'], close=fp_df['Close'], 
-                        name='Spot Gold', increasing_line_color='#228B22', decreasing_line_color='#FF0000'
+                        x=time_strings, open=fp_df['Open'], high=fp_df['High'], low=fp_df['Low'], close=fp_df['Close'], 
+                        name='Spot Gold', increasing_line_color='#00FF00', decreasing_line_color='#FF0000',
+                        increasing_fillcolor='rgba(0, 255, 0, 0.4)', decreasing_fillcolor='rgba(255, 0, 0, 0.4)'
                     ), row=1, col=1)
                     
+                    # On-Candle Percentage Text
                     fig_inner.add_trace(go.Scatter(
-                        x=fp_df.index, y=fp_df['Mid_Price'], mode='text', 
-                        text=fp_df['Footprint_Tag'], textfont=dict(size=10, color="#FFFFFF", family="Arial"), 
+                        x=time_strings, y=fp_df['Mid_Price'], mode='text', 
+                        text=fp_df['Footprint_Tag'], textfont=dict(size=11, color="#FFFFFF", family="Arial Black"), 
                         name='Footprint %'
                     ), row=1, col=1)
                     
-                    vol_colors = ['#FF0000' if v > (s * 2.0) else '#228B22' for v, s in zip(fp_df['Volume'], fp_df['Volume'].rolling(10).mean().fillna(1))]
-                    fig_inner.add_trace(go.Bar(x=fp_df.index, y=fp_df['Volume'], marker_color=vol_colors, name='Volume'), row=2, col=1)
+                    # Volume Bars
+                    vol_colors = ['#FF0000' if v > (s * 2.0) else '#00FF00' for v, s in zip(fp_df['Volume'], fp_df['Volume'].rolling(10).mean().fillna(1))]
+                    fig_inner.add_trace(go.Bar(x=time_strings, y=fp_df['Volume'], marker_color=vol_colors, name='Volume'), row=2, col=1)
                     
                     fig_inner.update_layout(
-                        height=600, 
+                        height=620, 
                         template="plotly_dark", 
-                        margin=dict(l=10, r=10, t=10, b=10), 
-                        xaxis_rangeslider_visible=True,
+                        margin=dict(l=10, r=10, t=10, b=10),
+                        xaxis=dict(type='category', rangeslider=dict(visible=False)),
+                        xaxis2=dict(type='category'),
                         dragmode='pan',
-                        showlegend=False
+                        showlegend=False,
+                        hovermode='x unified'
                     )
                     
-                    config = {'scrollZoom': True, 'displayModeBar': True}
+                    # Smooth Zoom Configuration
+                    config = {
+                        'scrollZoom': True, 
+                        'displayModeBar': True,
+                        'modeBarButtonsToAdd': ['drawline', 'eraseshape'],
+                        'displaylogo': False
+                    }
                     st.plotly_chart(fig_inner, use_container_width=True, config=config)
                 except Exception:
                     st.error("کینڈل سکنر پروسیسنگ میں تاخیر۔")
@@ -263,7 +278,7 @@ with main_tabs[1]:
                 st.error("اپشنز میں تاخیر۔")
 
 # ---------------------------------------------------------
-# SECTION 3: CME OPEN INTEREST & CFTC COT LOG
+# SECTION 3: CME OPEN INTEREST & CFTC COT LOG (VERIFIED COT)
 # ---------------------------------------------------------
 with main_tabs[2]:
     st.subheader("📌 Section 3: Official CME Open Interest & CFTC COT Engine")
